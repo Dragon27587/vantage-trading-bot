@@ -8,28 +8,28 @@ app = Flask(__name__)
 TOKEN = os.environ.get("METAAPI_TOKEN")
 ACCOUNT_ID = os.environ.get("METAAPI_ACCOUNT_ID")
 
-api = MetaApi(TOKEN)
-
-async def place_order(symbol, action, volume, sl=None, tp=None):
+async def place_order_async(symbol, action, volume, sl=None, tp=None):
+    api = MetaApi(TOKEN)
     account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
     connection = account.get_rpc_connection()
     await connection.connect()
     await connection.wait_synchronized()
 
     if action.upper() == 'BUY':
-        return await connection.create_market_buy_order(
+        res = await connection.create_market_buy_order(
             symbol=symbol,
             volume=float(volume),
             stop_loss=float(sl) if sl else None,
             take_profit=float(tp) if tp else None
         )
     else:
-        return await connection.create_market_sell_order(
+        res = await connection.create_market_sell_order(
             symbol=symbol,
             volume=float(volume),
             stop_loss=float(sl) if sl else None,
             take_profit=float(tp) if tp else None
         )
+    return res
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -44,9 +44,7 @@ def webhook():
     tp = data.get("tp")
 
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        res = loop.run_until_complete(place_order(symbol, action, volume, sl, tp))
+        res = asyncio.run(place_order_async(symbol, action, volume, sl, tp))
         return jsonify({"status": "success", "result": str(res)}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
