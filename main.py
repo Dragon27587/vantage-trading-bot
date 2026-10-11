@@ -8,9 +8,9 @@ app = Flask(__name__)
 TOKEN = os.environ.get("METAAPI_TOKEN")
 ACCOUNT_ID = os.environ.get("METAAPI_ACCOUNT_ID")
 
-async def place_order_async(symbol, action, volume, sl=None, tp=None):
+async def place_order_async(symbol, action, volume, sl, tp):
     api = MetaApi(TOKEN)
-    account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
+    account = await api.metatrader_account_api.get_account_information(ACCOUNT_ID)
     connection = account.get_rpc_connection()
     await connection.connect()
     await connection.wait_synchronized()
@@ -38,7 +38,7 @@ def webhook():
         if not data:
             return jsonify({"status": "error", "message": "Geen geldige JSON ontvangen"}), 400
             
-        action = data.get('action')
+        action = data.get('action', 'BUY')
         symbol = data.get('symbol', 'BTCUSD')
         
         # Volume veilig omzetten
@@ -64,11 +64,10 @@ def webhook():
         
         print(f"Ontvangen -> Actie: {action}, Symbool: {symbol}, Volume: {volume}, SL: {sl}, TP: {tp}")
         
-        return jsonify({"status": "success", "message": "Webhook verwerkt"}), 200
+        # Voer de MetaApi order uit naar Vantage MT5
+        res = asyncio.run(place_order_async(symbol, action, volume, sl, tp))
         
-    except Exception as e:
-        print(f"Fout bij verwerken webhook: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success", "message": "Order geplaatst", "result": str(res)}), 200
         
     except Exception as e:
         print(f"Fout bij verwerken webhook: {str(e)}")
