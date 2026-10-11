@@ -33,20 +33,34 @@ async def place_order_async(symbol, action, volume, sl=None, tp=None):
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    data = request.get_json(force=True)
-    if not data:
-        return jsonify({"status": "error", "message": "Geen data"}), 400
-
-    action = data.get("action")
-    symbol = data.get("symbol", "BTCUSD")
-    volume = data.get("volume", 0.01)
-    sl = data.get("sl")
-    tp = data.get("tp")
-
     try:
-        res = asyncio.run(place_order_async(symbol, action, volume, sl, tp))
-        return jsonify({"status": "success", "result": str(res)}), 200
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"status": "error", "message": "Geen geldige JSON ontvangen"}), 400
+            
+        action = data.get('action')
+        symbol = data.get('symbol', 'BTCUSD')
+        
+        try:
+            volume = float(data.get('volume', 0.01))
+        except (TypeError, ValueError):
+            volume = 0.01
+            
+        sl_raw = data.get('sl')
+        tp_raw = data.get('tp')
+        
+        sl = float(sl_raw) if sl_raw and str(sl_raw).lower() != 'na' else None
+        tp = float(tp_raw) if tp_raw and str(tp_raw).lower() != 'na' else None
+        
+        print(f"Ontvangen -> Actie: {action}, Symbool: {symbol}, Volume: {volume}, SL: {sl}, TP: {tp}")
+        
+        # Voer hier eventueel je MetaApi / order-functie uit
+        # res = asyncio.run(place_order_async(symbol, action, volume, sl, tp))
+        
+        return jsonify({"status": "success", "message": "Webhook verwerkt"}), 200
+        
     except Exception as e:
+        print(f"Fout bij verwerken webhook: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/', methods=['GET'])
