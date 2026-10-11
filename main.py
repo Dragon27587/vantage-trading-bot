@@ -11,21 +11,31 @@ ACCOUNT_ID = os.environ.get("METAAPI_ACCOUNT_ID")
 async def place_order_async(symbol, action, volume, sl, tp):
     api = MetaApi(TOKEN)
     account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
+    
     connection = account.get_rpc_connection()
-    await connection.connect()
-    await connection.wait_synchronized()
+    if not connection.connected:
+        await connection.connect()
+        await connection.wait_synchronized()
+
+    # Compound volume uit TradingView, afgerond op 2 decimalen
+    raw_volume = float(volume)
+    
+    # VEILIGHEIDSCHECK: Omdat je balans $75 is, blokkeren we lottemetingen boven 0.10 lot 
+    # zodat de broker orders niet afwijst (pas dit gerust aan als je account groeit).
+    final_volume = min(round(raw_volume, 2), 0.10)
+    print(f"Volume gecorrigeerd van {raw_volume} naar {final_volume} voor risicobeheer.")
 
     if action.upper() == 'BUY':
         res = await connection.create_market_buy_order(
             symbol=symbol,
-            volume=float(volume),
+            volume=final_volume,
             stop_loss=float(sl) if sl else None,
             take_profit=float(tp) if tp else None
         )
     else:
         res = await connection.create_market_sell_order(
             symbol=symbol,
-            volume=float(volume),
+            volume=final_volume,
             stop_loss=float(sl) if sl else None,
             take_profit=float(tp) if tp else None
         )
@@ -41,13 +51,11 @@ def webhook():
         action = data.get('action', 'BUY')
         symbol = data.get('symbol', 'BTCUSD')
         
-        # Volume veilig omzetten
         try:
             volume = float(data.get('volume', 0.01))
         except (TypeError, ValueError):
             volume = 0.01
             
-        # Hulpfunctie om placeholders zoals {{...}} of 'na' veilig af te vangen
         def safe_float(val):
             if val is None:
                 return None
@@ -64,7 +72,6 @@ def webhook():
         
         print(f"Ontvangen -> Actie: {action}, Symbool: {symbol}, Volume: {volume}, SL: {sl}, TP: {tp}")
         
-        # Voer de MetaApi order uit naar Vantage MT5
         res = asyncio.run(place_order_async(symbol, action, volume, sl, tp))
         
         return jsonify({"status": "success", "message": "Order geplaatst", "result": str(res)}), 200
