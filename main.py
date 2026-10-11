@@ -41,23 +41,34 @@ def webhook():
         action = data.get('action')
         symbol = data.get('symbol', 'BTCUSD')
         
+        # Volume veilig omzetten
         try:
             volume = float(data.get('volume', 0.01))
         except (TypeError, ValueError):
             volume = 0.01
             
-        sl_raw = data.get('sl')
-        tp_raw = data.get('tp')
-        
-        sl = float(sl_raw) if sl_raw and str(sl_raw).lower() != 'na' else None
-        tp = float(tp_raw) if tp_raw and str(tp_raw).lower() != 'na' else None
+        # Hulpfunctie om placeholders zoals {{...}} of 'na' veilig af te vangen
+        def safe_float(val):
+            if val is None:
+                return None
+            val_str = str(val).strip()
+            if not val_str or "{{" in val_str or val_str.lower() == "na":
+                return None
+            try:
+                return float(val_str)
+            except (ValueError, TypeError):
+                return None
+
+        sl = safe_float(data.get('sl'))
+        tp = safe_float(data.get('tp'))
         
         print(f"Ontvangen -> Actie: {action}, Symbool: {symbol}, Volume: {volume}, SL: {sl}, TP: {tp}")
         
-        # Voer hier eventueel je MetaApi / order-functie uit
-        # res = asyncio.run(place_order_async(symbol, action, volume, sl, tp))
-        
         return jsonify({"status": "success", "message": "Webhook verwerkt"}), 200
+        
+    except Exception as e:
+        print(f"Fout bij verwerken webhook: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
         
     except Exception as e:
         print(f"Fout bij verwerken webhook: {str(e)}")
