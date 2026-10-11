@@ -8,36 +8,11 @@ app = Flask(__name__)
 TOKEN = os.environ.get("METAAPI_TOKEN")
 ACCOUNT_ID = os.environ.get("METAAPI_ACCOUNT_ID")
 
-async def place_order_async(symbol, action, volume, sl, tp):
-    api = MetaApi(TOKEN)
-    account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
-    
-    connection = account.get_rpc_connection()
-    await connection.connect()
-    await connection.wait_synchronized()
-
-    raw_volume = float(volume)
-    final_volume = min(round(raw_volume, 2), 0.10)
-    print(f"Volume gecorrigeerd van {raw_volume} naar {final_volume} voor risicobeheer.")
-
-    if action.upper() == 'BUY':
-        res = await connection.create_market_buy_order(
-            symbol=symbol,
-            volume=final_volume,
-            stop_loss=float(sl) if sl else None,
-            take_profit=float(tp) if tp else None
-        )
-    else:
-        res = await connection.create_market_sell_order(
-            symbol=symbol,
-            volume=final_volume,
-            stop_loss=float(sl) if sl else None,
-            take_profit=float(tp) if tp else None
-        )
-    return res
+# Initialiseer de MetaApi client globaal
+api = MetaApi(TOKEN) if TOKEN else None
 
 @app.route('/webhook', methods=['POST'])
-def webhook():
+async def webhook():
     try:
         data = request.get_json(silent=True)
         if not data:
@@ -65,10 +40,40 @@ def webhook():
         sl = safe_float(data.get('sl'))
         tp = safe_float(data.get('tp'))
         
-        print(f"Ontvangen -> Actie: {action}, Symbool: {symbol}, Volume: {volume}, SL: {sl}, TP: {tp}")
+        raw_volume = float(volume)
+        final_volume = min(round(raw_volume, 2), 0.10)
+        print(f"Ontvangen -> Actie: {action}, Symbool: {symbol}, Volume: {raw_volume} (Gecorrigeerd naar {final_volume}), SL: {sl}, TP: {tp}")
         
-        res = asyncio.run(place_order_async(symbol, action, volume, sl, tp))
+        if not api or not ACCOUNT_ID:
+            return jsonify({"status": "error", "message": "MetaApi credentials ontbreken"}), 500
+
+        # Verbinding maken en direct de order plaatsen
+        account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
+        connection = account.get_rpc_connection()
+        await connection.connect()
+        await connection.wait_synchronized()
+
+        if action.upper() == 'BUY':
+            res = await connection.create_market_buy_order(
+                symbol=symbol,
+                volume=final_volume,
+                stop_loss=sl,
+                take_profit=tp
+            )
+        else:
+            res = await connection.create_market_sell_order(
+                symbol=symbol,
+                volume=final_volume,
+                stop_loss=sl,
+                take_profit=tp
+            )
         
+        # Sluit de verbinding netjes af om geheugen vrij te maken
+        try:
+            await connection.close()
+        except:
+            pass
+
         return jsonify({"status": "success", "message": "Order geplaatst", "result": str(res)}), 200
         
     except Exception as e:
