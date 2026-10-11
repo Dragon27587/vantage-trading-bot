@@ -13,15 +13,10 @@ async def place_order_async(symbol, action, volume, sl, tp):
     account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
     
     connection = account.get_rpc_connection()
-    if not connection.connected:
-        await connection.connect()
-        await connection.wait_synchronized()
+    await connection.connect()
+    await connection.wait_synchronized()
 
-    # Compound volume uit TradingView, afgerond op 2 decimalen
     raw_volume = float(volume)
-    
-    # VEILIGHEIDSCHECK: Omdat je balans $75 is, blokkeren we lottemetingen boven 0.10 lot 
-    # zodat de broker orders niet afwijst (pas dit gerust aan als je account groeit).
     final_volume = min(round(raw_volume, 2), 0.10)
     print(f"Volume gecorrigeerd van {raw_volume} naar {final_volume} voor risicobeheer.")
 
