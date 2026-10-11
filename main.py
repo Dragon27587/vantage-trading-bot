@@ -10,7 +10,7 @@ ACCOUNT_ID = os.environ.get("METAAPI_ACCOUNT_ID")
 
 async def place_order_async(symbol, action, volume, sl, tp):
     api = MetaApi(TOKEN)
-    account = await api.metatrader_account_api.get_account_information(ACCOUNT_ID)
+    account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
     connection = account.get_rpc_connection()
     await connection.connect()
     await connection.wait_synchronized()
