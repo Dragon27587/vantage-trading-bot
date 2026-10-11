@@ -69,15 +69,14 @@ def webhook():
         sl = safe_float(data.get('sl'))
         tp = safe_float(data.get('tp'))
         
-        raw_volume = float(volume)
-        # Compound veiligheidsbegrenzer op max 0.10 lot
-        final_volume = min(round(raw_volume, 2), 0.10)
-        print(f"Ontvangen -> Actie: {action}, Symbool: {symbol}, Volume: {raw_volume} (Aangepast: {final_volume}), SL: {sl}, TP: {tp}")
+        # Gebruik nu exact het berekende volume van TradingView (afgerond op 2 decimalen)
+        final_volume = round(float(volume), 2)
+        print(f"Ontvangen -> Actie: {action}, Symbool: {symbol}, Volume: {final_volume}, SL: {sl}, TP: {tp}")
         
         if not TOKEN or not ACCOUNT_ID:
             return jsonify({"status": "error", "message": "METAAPI credentials ontbreken in Render"}), 500
 
-        # Start een schone event loop per webhook request
+        # Start een schone event loop per webhook request en voer uit
         res = asyncio.run(execute_trade(symbol, action, final_volume, sl, tp))
         
         return jsonify({"status": "success", "message": "Order geplaatst", "result": str(res)}), 200
