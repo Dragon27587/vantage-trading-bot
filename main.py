@@ -31,7 +31,6 @@ async def execute_trade(symbol, action, volume, sl, tp):
             take_profit=tp
         )
 
-    # Sluit de verbinding en de MetaApi client af om geheugen vrij te maken
     try:
         await connection.close()
         await api.close()
@@ -43,7 +42,10 @@ async def execute_trade(symbol, action, volume, sl, tp):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        data = request.get_json(silent=True)
+        # force=True lost de 400 Bad Request op
+        data = request.get_json(force=True, silent=True)
+        print("Ontvangen payload:", request.data)
+        
         if not data:
             return jsonify({"status": "error", "message": "Geen geldige JSON ontvangen"}), 400
             
@@ -69,14 +71,12 @@ def webhook():
         sl = safe_float(data.get('sl'))
         tp = safe_float(data.get('tp'))
         
-        # Gebruik nu exact het berekende volume van TradingView (afgerond op 2 decimalen)
         final_volume = round(float(volume), 2)
         print(f"Ontvangen -> Actie: {action}, Symbool: {symbol}, Volume: {final_volume}, SL: {sl}, TP: {tp}")
         
         if not TOKEN or not ACCOUNT_ID:
             return jsonify({"status": "error", "message": "METAAPI credentials ontbreken in Render"}), 500
 
-        # Start een schone event loop per webhook request en voer uit
         res = asyncio.run(execute_trade(symbol, action, final_volume, sl, tp))
         
         return jsonify({"status": "success", "message": "Order geplaatst", "result": str(res)}), 200
