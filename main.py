@@ -1,5 +1,6 @@
 import os
 import asyncio
+import threading
 from flask import Flask, request, jsonify
 from metaapi_cloud_sdk import MetaApi
 
@@ -8,41 +9,42 @@ app = Flask(__name__)
 TOKEN = os.environ.get("METAAPI_TOKEN")
 ACCOUNT_ID = os.environ.get("METAAPI_ACCOUNT_ID")
 
-async def execute_trade(symbol, action, volume, sl, tp):
-    api = MetaApi(TOKEN)
-    account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
-    
-    connection = account.get_rpc_connection()
-    await connection.connect()
-    await connection.wait_synchronized()
-
-    if action.upper() == 'BUY':
-        res = await connection.create_market_buy_order(
-            symbol=symbol,
-            volume=volume,
-            stop_loss=sl,
-            take_profit=tp
-        )
-    else:
-        res = await connection.create_market_sell_order(
-            symbol=symbol,
-            volume=volume,
-            stop_loss=sl,
-            take_profit=tp
-        )
-
+async def execute_trade_async(symbol, action, volume, sl, tp):
     try:
+        api = MetaApi(TOKEN)
+        account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
+        
+        connection = account.get_rpc_connection()
+        await connection.connect()
+        await connection.wait_synchronized()
+
+        if action.upper() == 'BUY':
+            res = await connection.create_market_buy_order(
+                symbol=symbol,
+                volume=volume,
+                stop_loss=sl,
+                take_profit=tp
+            )
+        else:
+            res = await connection.create_market_sell_order(
+                symbol=symbol,
+                volume=volume,
+                stop_loss=sl,
+                take_profit=tp
+            )
+
+        print(f"Trade succesvol geplaatst via MetaApi: {res}")
         await connection.close()
         await api.close()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Fout in background trade execution: {str(e)}")
 
-    return res
+def run_async_trade(symbol, action, volume, sl, tp):
+    asyncio.run(execute_trade_async(symbol, action, volume, sl, tp))
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        # force=True lost de 400 Bad Request op
         data = request.get_json(force=True, silent=True)
         print("Ontvangen payload:", request.data)
         
@@ -77,9 +79,10 @@ def webhook():
         if not TOKEN or not ACCOUNT_ID:
             return jsonify({"status": "error", "message": "METAAPI credentials ontbreken in Render"}), 500
 
-        res = asyncio.run(execute_trade(symbol, action, final_volume, sl, tp))
+        # Start de trade direct in een achtergrond-thread en antwoord onmiddellijk aan TradingView
+        threading.Thread(target=run_async_trade, args=(symbol, action, final_volume, sl, tp)).start()
         
-        return jsonify({"status": "success", "message": "Order geplaatst", "result": str(res)}), 200
+        return jsonify({"status": "success", "message": "Webhook ontvangen, trade wordt in achtergrond uitgevoerd"}), 200
         
     except Exception as e:
         print(f"Fout bij verwerken webhook: {str(e)}")
